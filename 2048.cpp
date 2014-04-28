@@ -1,3 +1,5 @@
+#include "2048.h"
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -6,7 +8,6 @@
 #include <time.h>
 #include <algorithm>
 
-#include "2048.h"
 
 #include "config.h"
 #if defined(HAVE_UNORDERED_MAP)
@@ -338,8 +339,8 @@ float score_toplevel_move(board_t board, int move) {
     elapsed = (finish.tv_sec - start.tv_sec);
     elapsed += (finish.tv_usec - start.tv_usec) / 1000000.0;
 
-    printf("Move %d: result %f: eval'd %d moves (%d cache hits, %d cache size) in %.2f seconds (maxdepth=%d)\n", move, res,
-        state.moves_evaled, state.cachehits, (int)state.trans_table.size(), elapsed, state.maxdepth);
+    //printf("Move %d: result %f: eval'd %d moves (%d cache hits, %d cache size) in %.2f seconds (maxdepth=%d)\n", move, res,
+        //state.moves_evaled, state.cachehits, (int)state.trans_table.size(), elapsed, state.maxdepth);
 
     return res;
 }
@@ -349,9 +350,6 @@ int find_best_move(board_t board) {
     int move;
     float best = 0;
     int bestmove = -1;
-
-    print_board(board);
-    printf("Current scores: heur %.0f, actual %.0f\n", score_heur_board(board), score_board(board));
 
     for(move=0; move<4; move++) {
         float res = score_toplevel_move(board, move);
@@ -424,10 +422,22 @@ static board_t initial_board() {
     return insert_tile_rand(board, draw_tile());
 }
 
-void play_game(get_move_func_t get_move) {
+int get_random_move(board_t board) {
+    return unif_random(4);
+}
+
+PyObject* play_game_randomly() {
+    return play_game(get_random_move);
+}
+
+PyObject* play_game(get_move_func_t get_move) {
     board_t board = initial_board();
+    PyObject* result = PyList_New(0);
+
     int moveno = 0;
     int scorepenalty = 0; // "penalty" for obtaining free 4 tiles
+
+    int moves = 0;
 
     while(1) {
         int move;
@@ -440,7 +450,17 @@ void play_game(get_move_func_t get_move) {
         if(move == 4)
             break; // no legal moves
 
-        printf("\nMove #%d, current score=%.0f\n", ++moveno, score_board(board) - scorepenalty);
+        //printf("\nMove #%d, current score=%.0f\n", ++moveno, score_board(board) - scorepenalty);
+        //print_board(board);
+
+        PyObject *val = PyFloat_FromDouble(score_board(board));
+        PyObject *key = PyLong_FromLongLong(board);
+
+        PyObject *item = PyTuple_New(2);
+        PyTuple_SetItem(item, 0, key);
+        PyTuple_SetItem(item, 1, val);
+
+        PyList_Append(result, item);
 
         move = get_move(board);
         if(move < 0)
@@ -448,21 +468,27 @@ void play_game(get_move_func_t get_move) {
 
         newboard = execute_move(move, board);
         if(newboard == board) {
-            printf("Illegal move!\n");
-            moveno--;
+            moves -= 1;
             continue;
         }
 
         board_t tile = draw_tile();
         if (tile == 2) scorepenalty += 4;
         board = insert_tile_rand(newboard, tile);
+
+        int max_value = get_max_rank(board);
+
+        if (max_value == 11)
+            break;
+
+        moves += 1;
     }
 
-    print_board(board);
-    printf("\nGame over. Your score is %.0f. The highest rank you achieved was %d.\n", score_board(board) - scorepenalty, get_max_rank(board));
+    return result;
 }
 
 int main() {
     init_tables();
-    play_game(find_best_move);
+    //play_game(find_best_move);
+    play_game_randomly();
 }
